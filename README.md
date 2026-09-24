@@ -102,7 +102,7 @@ token and `[SEP]`, with the character fed in on its own.
   title     = {Radical-Aligned Structure in Multilingual Transformer Representations
                of Chinese Characters: A Controlled Empirical Study},
   author    = {Maity, Aryan},
-  booktitle = {Proceedings of the 37th Conference on Computational Linguistics and
+  booktitle = {Proceedings of the 38th Conference on Computational Linguistics and
                Speech Processing (ROCLING)},
   year      = {2026}
 }
