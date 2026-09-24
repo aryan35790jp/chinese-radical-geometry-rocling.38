@@ -1,55 +1,109 @@
-# Radical-Aligned Structure in Multilingual Transformer Representations of Chinese Characters
+# chinese-radical-geometry
 
+Data and code for the paper *Radical-Aligned Structure in Multilingual Transformer
+Representations of Chinese Characters: A Controlled Empirical Study* (ROCLING 2026).
 
-- **11 models** spanning multilingual / Chinese / Japanese / glyph-aware /
-  pure-vision baselines (`mBERT`, `Chinese-BERT`, `MacBERT`, `XLM-R base/large`,
-  `ERNIE 3.0`, `UER-tiny/small`, `ChineseBERT-glyph`, `JP-BERT char/subword`,
-  rendered-PNG → frozen ResNet-18).
-- **All hidden layers** for every model, three pool types each (`char`,
-  `mean`, `cls`).
-- **Anisotropy correction** (Mu & Viswanath all-but-the-top) before every
-  cosine measurement.
-- **20+ semantic fields** for the controlled comparison, generated from a
-  hand-curated mixed-radical taxonomy with a fallback path that doesn't
-  require OpenHowNet.
-- **Linear probes** for radical category and semantic field at every layer.
-- **Phonetic vs semantic radical role** split via CHISE IDS.
-- **Cross-script replication** on Japanese kanji.
-- **Co-occurrence / PMI variance decomposition** that quantifies how much
-  of the radical effect is form, semantics, distributional context, or
-  frequency.
-- **Mikolov-style orthographic arithmetic** and **geometric activation
-  patching** as causal-flavored interventions.
-- **Sentential-context analysis** comparing isolated vs in-sentence
-  embeddings.
-- **Downstream validation** against PKU-500 word similarity.
+## The short version
 
+Chinese characters are filed under Kangxi radicals, and a radical often hints at what
+a character means — 氵 shows up in 河 (river), 湖 (lake), 泪 (tears). We asked whether
+mBERT and Chinese-BERT place characters that share a radical closer together in
+embedding space.
 
-| Step                     | Compute            | RAM    | Runtime          |
-|--------------------------|--------------------|--------|------------------|
-| `extract_embeddings.py`  | GPU (A100 ideal)   | 16 GB  | 3 h A100 / 15 h T4 |
-| `cooccurrence_baseline.py` (first run) | CPU, network | 8 GB   | 30 min for PMI build |
-| `sentential_context.py`  | GPU                | 16 GB  | 90 min total     |
-| `layer_wise_analysis.py` | CPU                | 8 GB   | 1 hr             |
-| everything else          | CPU                | <8 GB  | minutes          |
+Across 6,306 characters and 68 radicals, they do. The effect is reliable but small,
+with Cohen's *d* between 0.06 and 0.14, and it holds for both models under both cosine
+and Euclidean distance.
 
-## Statistical methods
+Then we ran the control that matters. Instead of comparing everything to everything,
+we compared same-radical and different-radical characters that already belong to the
+same meaning field — animals, water, wood, metal. The effect vanished (*d* ≈ −0.1,
+*p* > 0.5). So what looks like radical structure is better explained by meaning:
+radicals correlate with meaning, models organise by meaning, and the radical signal
+comes along for the ride.
 
-- **Anisotropy correction**: mean-centering, per-coordinate standardization,
-  removal of top-k principal components (Mu & Viswanath 2018,
-  "All-But-the-Top"). Default k=2.
-- **Cohen's d** with pooled unbiased standard deviation.
-- **Welch's unequal-variance t-test** for the primary comparison.
-- **Permutation test** (1,000 shuffles for corpus-scale, 5,000 for the
-  semantic control). Continuity-corrected one-sided p.
-- **Bootstrap 95% CI** (1,000 resamples) for the mean difference.
-- **Holm–Bonferroni** correction across all primary comparisons.
-- **Representational Similarity Analysis (RSA)**: Spearman correlation
-  between the embedding RDM and the binary same-radical RDM.
-- **Variance decomposition**: OLS of `bert_cosine ~ same_radical + ppmi +
-  freq_diff + stroke_diff` on a 200k-pair sample, partial R² for each
-  predictor.
+The negative control is the point of the paper, not a footnote.
 
-## License
+## What's in here
 
-Research use. Dataset derived from Unicode Unihan.
+```
+data/
+  radical_dataset.csv     6,306 characters with their Kangxi radical, stroke count,
+                          group size and a frequency proxy. This is the filtered set
+                          every number in the paper is computed on.
+  radical_summary.csv     per-radical character counts (68 rows)
+
+results/
+  main_results.csv        Table 2 and Table 3: means, deltas, Cohen's d, p-values,
+                          bootstrap intervals, confound correlations
+  semantic_control_results.csv   Table 4: the four semantic fields plus pooled rows
+  *_intra_pairs.npy       the 3,400 sampled within-radical similarities per model
+  *_inter_pairs.npy       the 3,400 sampled between-radical similarities
+  *_euclid_*.npy          the same two pools under Euclidean distance
+  *_bootstrap.npy         1,000 bootstrap resamples of the intra-inter difference
+  *_permutation_scores.npy   1,000 label shuffles
+  *_rad_cohesions.npy     mean within-radical similarity for each of the 68 radicals
+  *_rad_sizes.npy         how many characters each radical has
+  *_semantic_control_*.npy   the 40 within-radical and 100 cross-radical pairs from
+                          the control experiment, plus its 5,000 shuffles
+
+figures/                  the six figures that appear in the paper
+
+check_results.py          recomputes every statistic in the paper from the arrays
+                          above and reports whether it matches
+radical_cohesion.py       rebuilds the per-radical cohesion tables in Appendix B
+                          from data/radical_dataset.csv and mBERT
+```
+
+## Reproducing the numbers
+
+```bash
+pip install -r requirements.txt
+
+python check_results.py       # no model download, runs in seconds
+python radical_cohesion.py    # downloads mBERT, a few minutes on CPU
+```
+
+`check_results.py` reads the stored arrays and re-derives the Welch tests, Cohen's *d*,
+the bootstrap intervals, the permutation null distributions and the Holm correction,
+then checks each against what the paper reports. `radical_cohesion.py` starts from the
+character list instead and recomputes cohesion for all 68 radicals from scratch.
+
+## A few notes on the data
+
+The character set comes from the Unicode Unihan database. We don't redistribute
+Unihan here — download it from <https://www.unicode.org/Public/UCD/latest/ucd/Unihan.zip>
+if you want to rebuild the character list yourself. `data/radical_dataset.csv` is the
+finished product.
+
+Three filters produced it: the radical must have at least 20 characters in the set,
+each character must be a single token under both the mBERT and Chinese-BERT
+tokenizers, and variant codepoints for the same character are merged.
+
+The corpus-scale tests use balanced samples of 3,400 within-radical pairs (50 per
+radical) and 3,400 between-radical pairs rather than all 19.9 million available pairs.
+With pools that large every difference is significant regardless of size, so the
+effect sizes and bootstrap intervals carry the information, not the *p*-values.
+
+The full 6,306 × 6,306 similarity matrices are about 160 MB each, so they aren't in
+the repo. `radical_cohesion.py` rebuilds what it needs.
+
+Embeddings come from the final hidden layer, mean-pooled over `[CLS]`, the character
+token and `[SEP]`, with the character fed in on its own.
+
+## Models
+
+- `bert-base-multilingual-cased`
+- `hfl/chinese-bert-wwm-ext`
+
+## Citation
+
+```bibtex
+@inproceedings{maity2026radical,
+  title     = {Radical-Aligned Structure in Multilingual Transformer Representations
+               of Chinese Characters: A Controlled Empirical Study},
+  author    = {Maity, Aryan},
+  booktitle = {Proceedings of the 37th Conference on Computational Linguistics and
+               Speech Processing (ROCLING)},
+  year      = {2026}
+}
+```
